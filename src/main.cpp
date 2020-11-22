@@ -1,9 +1,9 @@
 #include <MeAuriga.h>
 
-#define USE_DEBUG
+//#define USE_DEBUG
 #define USE_encodernew
 #define USE_encoderonboard
-//#define USE_audioplayer
+#define USE_audioplayer
 //#define USE_linefollower
 //#define USE_linefollower
 #define USE_ledmatrix
@@ -142,7 +142,7 @@
   int S_Tie = 14;
   int S_Explosion = 15;
   int S_Flyby = 16;
-  int S_count = 16;
+  int S_count = 17;
 #endif
 
 // create an object named linefollower 
@@ -249,6 +249,7 @@ int M3_Pos[] = {0,0}; // Array to store Current[0] and Previous[1] positions of 
 int LockMain_active = 1;
 int LockMain_value[] = {100,0,0,0,0,0,0,0,0,0,0,0,0}; // current value for 12 different lock positions
 int LockMain_unlock[] = {100,0,0,0,0,0,0,0,0,0,0,0,0}; // unlock value for 12 different lock positions
+bool LockMain_found[] = {false,false,false,false,false,false,false,false,false,false,false,false,false}; // Is the correct value found for 12 different lock positions
 int mode = 2; // 1 = intro, 2 = game, 3 = outro
 
 //Program Methods
@@ -275,26 +276,26 @@ int ConvertPos(int difPos, int RetMin, int RetMax, int Old)
   return RetNew;
 }
 // ConvertPosBis - Converts wheel positions to an int value, can be used in different cases.
-int ConvertPosBis(int Pos, int Degrees, int Old){
-  int RetNew = Old;
+int ConvertPosBis(int Pos, int Degrees, int steps){
+  int RetNew;
   int difPos = Pos * -1;
   if(difPos >= 0)
   {
-    while (difPos > 360)
+    while (difPos > 720)
     {
-      difPos = difPos - 360;
+      difPos = difPos - 720;
     }
     RetNew = difPos / Degrees;
     RetNew = RetNew + 1;
   }
   else if(difPos < 0)
   {
-    while (difPos < -360)
+    while (difPos < -720)
     {
-      difPos = difPos + 360;
+      difPos = difPos + 720;
     }
     RetNew = difPos / Degrees;
-    RetNew = 12 + RetNew;
+    RetNew = steps + RetNew;
   }
   return RetNew;
 }
@@ -305,7 +306,7 @@ int GetMotor1Pos(int lockMain_old)
   M1_Pos[1] = M1_Pos[0];
   M1_Pos[0] = motor1.getCurPos();
   //return ConvertPos(M1_Pos[1] - M1_Pos[0], 1, 12,  lockMain_old);
-  return ConvertPosBis(M1_Pos[0],30,1);
+  return ConvertPosBis(M1_Pos[0],60,12);
 }
 // GetMotor2Pos - Get the motor 2 position as int
 int GetMotor2Pos(int lock1_old)
@@ -314,7 +315,7 @@ int GetMotor2Pos(int lock1_old)
   M2_Pos[1] = M2_Pos[0];
   M2_Pos[0] = motor2.getCurPos();
   //return ConvertPos(M2_Pos[1] - M2_Pos[0], 0, 9,  lock1_old);
-  return ConvertPosBis(M2_Pos[0],36,1);
+  return ConvertPosBis(M2_Pos[0],72,9);
 }
 // GetMotor3Pos - Get the motor 3 position as int
 int GetMotor3Pos(int lock2_old)
@@ -323,17 +324,22 @@ int GetMotor3Pos(int lock2_old)
   M3_Pos[1] = M3_Pos[0];
   M3_Pos[0] = motor3.getCurrentPosition();
   //return ConvertPos(M3_Pos[1] - M3_Pos[0], 0, 9,  lock2_old);
-  return ConvertPosBis(M3_Pos[0],36,1);
+  return ConvertPosBis(M3_Pos[0],72,9);
 }
 //
 void IsLocked(int LockMain_active) {
       LockMain_value[LockMain_active] = GetMotor2Pos(LockMain_value[LockMain_active]);
-      //ledmatrix.showNum(LockMain_value[LockMain_active]);
-      if (LockMain_value[LockMain_active] == LockMain_unlock[LockMain_active])
+      ledmatrix.showNum(LockMain_value[LockMain_active]);
+      if(LockMain_found[LockMain_active] == false)
       {
-        LedCol[LockMain_active] = green;
-      } else {
-        LedCol[LockMain_active] = red;
+        if (LockMain_value[LockMain_active] == LockMain_unlock[LockMain_active])
+        {
+          LedCol[LockMain_active] = green;
+          LockMain_found[LockMain_active] = true;
+          audioplayer.playMusicFileIndex(1);
+        } else {
+          LedCol[LockMain_active] = red;
+        }
       }
       #ifdef USE_DEBUG
         Serial.println(LockMain_value[LockMain_active]);
@@ -399,10 +405,10 @@ void setup()
   #endif
   #ifdef USE_rgbledring
     //Set color values
-    amber.r = 50; amber.g = 25; amber.b = 000;
+    amber.r = 10; amber.g = 5; amber.b = 000;
     black.r = 000; black.g = 000; black.b = 000;
-    red.r = 50; red.g = 000; red.b = 000;
-    green.r = 000; green.g = 50; green.b = 000;
+    red.r = 10; red.g = 000; red.b = 000;
+    green.r = 000; green.g = 10; green.b = 000;
     rgbledring.setpin( 44 );
     for (int i = 1; i <= 12; i++) {
       LedCol[i] = red;
@@ -415,6 +421,11 @@ void setup()
   #ifdef USE_ledmatrix
     ledmatrix.setBrightness(1);
     ledmatrix.setColorIndex(1);
+  #endif
+  #ifdef USE_audioplayer
+    audioplayer.PlayerInit();
+    audioplayer.setMusicVolume(50);
+    audioplayer.stopMusic();
   #endif
   randomSeed(analogRead(0));
   for (int i = 1; i <= 12; i++) {
@@ -440,7 +451,7 @@ void loop()
       #endif
         //Determine Current lock position
         LockMain_active = GetMotor1Pos(LockMain_active);
-        ledmatrix.showNum(LockMain_active);
+        //ledmatrix.showNum(LockMain_active);
         //determine the color for the current lock
         IsLocked(LockMain_active);
         //set all leds to their color map 
