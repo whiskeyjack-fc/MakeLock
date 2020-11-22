@@ -228,9 +228,7 @@
   cRGB yellow;     //255,255,000
   cRGB black;      //000,000,000
   cRGB white;      //255,255,255
-  cRGB LedCol[13] = {black,red,red,red,red,red,red,red,red,red,red,red,red};
-
-  
+  cRGB LedCol[13] = {black,red,red,red,red,red,red,red,red,red,red,red,red};  
 #endif
 
 // create an object named SoundSensor
@@ -245,14 +243,13 @@
 #endif
 
 //Program variables
-int W1_CurPos = 0;
-int W1_PrevPos = 0;
-int W2_CurPos = 0;
-int W2_PrevPos = 0;
-int W3_CurPos = 0;
-int W3_PrevPos = 0;
-int lockMain_active = 1;
-int lock1_value = 0;
+int M1_Pos[] = {0,0}; // Array to store Current[0] and Previous[1] positions of Motor 1
+int M2_Pos[] = {0,0}; // Array to store Current[0] and Previous[1] positions of Motor 1
+int M3_Pos[] = {0,0}; // Array to store Current[0] and Previous[1] positions of Motor 1
+int LockMain_active = 1;
+int LockMain_value[] = {100,0,0,0,0,0,0,0,0,0,0,0,0}; // current value for 12 different lock positions
+int LockMain_unlock[] = {100,0,0,0,0,0,0,0,0,0,0,0,0}; // unlock value for 12 different lock positions
+int mode = 2; // 1 = intro, 2 = game, 3 = outro
 
 //Program Methods
 // ConvertPos - Converts wheel positions to an int value, can be used in different cases.
@@ -261,7 +258,7 @@ int ConvertPos(int difPos, int RetMin, int RetMax, int Old)
   int RetNew = Old;
   if(difPos > 0)
   {
-    if(abs(difPos) > 1)
+    if(abs(difPos) > 10)
     {
       ++RetNew;
       if(RetNew > RetMax){RetNew = RetMin;}
@@ -269,7 +266,7 @@ int ConvertPos(int difPos, int RetMin, int RetMax, int Old)
   }
   else if(difPos < 0)
   {
-    if(abs(difPos) > 1)
+    if(abs(difPos) > 10)
     {
       --RetNew;
       if(RetNew < RetMin){RetNew = RetMax;}    
@@ -277,19 +274,99 @@ int ConvertPos(int difPos, int RetMin, int RetMax, int Old)
   }
   return RetNew;
 }
-
+// ConvertPosBis - Converts wheel positions to an int value, can be used in different cases.
+int ConvertPosBis(int Pos, int Degrees, int Old){
+  int RetNew = Old;
+  int difPos = Pos * -1;
+  if(difPos >= 0)
+  {
+    while (difPos > 360)
+    {
+      difPos = difPos - 360;
+    }
+    RetNew = difPos / Degrees;
+    RetNew = RetNew + 1;
+  }
+  else if(difPos < 0)
+  {
+    while (difPos < -360)
+    {
+      difPos = difPos + 360;
+    }
+    RetNew = difPos / Degrees;
+    RetNew = 12 + RetNew;
+  }
+  return RetNew;
+}
+// GetMotor1Pos - Get the motor 1 position as int
+int GetMotor1Pos(int lockMain_old)
+{
+  motor1.loop();
+  M1_Pos[1] = M1_Pos[0];
+  M1_Pos[0] = motor1.getCurPos();
+  //return ConvertPos(M1_Pos[1] - M1_Pos[0], 1, 12,  lockMain_old);
+  return ConvertPosBis(M1_Pos[0],30,1);
+}
+// GetMotor2Pos - Get the motor 2 position as int
+int GetMotor2Pos(int lock1_old)
+{
+  motor2.loop();
+  M2_Pos[1] = M2_Pos[0];
+  M2_Pos[0] = motor2.getCurPos();
+  //return ConvertPos(M2_Pos[1] - M2_Pos[0], 0, 9,  lock1_old);
+  return ConvertPosBis(M2_Pos[0],36,1);
+}
+// GetMotor3Pos - Get the motor 3 position as int
+int GetMotor3Pos(int lock2_old)
+{
+  //motor3.loop();
+  M3_Pos[1] = M3_Pos[0];
+  M3_Pos[0] = motor3.getCurrentPosition();
+  //return ConvertPos(M3_Pos[1] - M3_Pos[0], 0, 9,  lock2_old);
+  return ConvertPosBis(M3_Pos[0],36,1);
+}
+//
+void IsLocked(int LockMain_active) {
+      LockMain_value[LockMain_active] = GetMotor2Pos(LockMain_value[LockMain_active]);
+      //ledmatrix.showNum(LockMain_value[LockMain_active]);
+      if (LockMain_value[LockMain_active] == LockMain_unlock[LockMain_active])
+      {
+        LedCol[LockMain_active] = green;
+      } else {
+        LedCol[LockMain_active] = red;
+      }
+      #ifdef USE_DEBUG
+        Serial.println(LockMain_value[LockMain_active]);
+      #endif
+}
+// SetLedColor - Set all leds to a single color
 void SetLedColor(cRGB color)
 {
   rgbledring.setColor( color.r, color.g, color.b );
   rgbledring.show();
 }
-
+// SetLedColorAt - Set led at position to a single color
 void SetLedColorAt(int index, cRGB color)
 {
   rgbledring.setColorAt( index, color.r, color.g, color.b );
   rgbledring.show();
 }
-
+// SetAllLedColor - Set all leds to the color from the LedCol color map
+void SetAllLedColor()
+{
+  for (int i = 1; i <= 12; i++) {
+    if(i == LockMain_active){
+      SetLedColorAt(LedMap[i], amber);
+      if(LockMain_value[i] == LockMain_unlock[i]){
+        SetLedColorAt(LedMap[i], LedCol[i]);
+      }else{
+        SetLedColorAt(LedMap[i], amber);
+      }
+    }else{
+      SetLedColorAt(LedMap[i], LedCol[i]);
+    }
+  }
+}
 void setup()
 {
   #ifdef USE_DEBUG
@@ -322,54 +399,57 @@ void setup()
   #endif
   #ifdef USE_rgbledring
     //Set color values
-    amber.r = 255; amber.g = 194; amber.b = 000;
+    amber.r = 50; amber.g = 25; amber.b = 000;
     black.r = 000; black.g = 000; black.b = 000;
     red.r = 50; red.g = 000; red.b = 000;
     green.r = 000; green.g = 50; green.b = 000;
     rgbledring.setpin( 44 );
+    for (int i = 1; i <= 12; i++) {
+      LedCol[i] = red;
+    }
     //Turn off all Leds
-    SetLedColor( black );    
+    SetLedColor( black );
+    //Set all leds to starting colors
+    SetAllLedColor();   
   #endif
   #ifdef USE_ledmatrix
     ledmatrix.setBrightness(1);
     ledmatrix.setColorIndex(1);
   #endif
+  randomSeed(analogRead(0));
+  for (int i = 1; i <= 12; i++) {
+    LockMain_unlock[i]= random(10);
+  }
 }
 
 void loop()
 {
   #ifdef USE_DEBUG
-    //Serial.println("---> Top of the loop <---");
+    Serial.println("---> Top of the loop <---");
   #endif
-  //Determine Current lock position
-  motor1.loop();
-  SetLedColor( black );
-  W1_PrevPos = W1_CurPos;
-  W1_CurPos = motor1.getCurPos();
-  lockMain_active = ConvertPos(W1_PrevPos - W1_CurPos, 1, 12,  lockMain_active);  
-  SetLedColorAt( LedMap[lockMain_active], LedCol[lockMain_active] );
-
-  switch (lockMain_active) {
+  switch (mode) {
     case 1:
-      // Lock 1 actions - 0 to 9 digit - change with left wheel only
-      motor2.loop();
-      W2_PrevPos = W2_CurPos;
-      W2_CurPos = motor2.getCurPos();
-      lock1_value = ConvertPos(W2_PrevPos - W2_CurPos, 0, 9,  lock1_value);
-      //ledmatrix.clearScreen();
-      ledmatrix.drawStr(0,0,char(lockMain_active) + " - " + char(lock1_value));
-      if (lock1_value == 5)
-      {
-        LedCol[1] = green;
-      } else {
-        LedCol[1] = red;
-      }
       #ifdef USE_DEBUG
-        Serial.println(lock1_value);
+        Serial.println("---> Mode: Intro <---");
       #endif
+      ledmatrix.drawStr(0,7,"test");
       break;
-    default:
-      //do nothing
+    case 2:
+      #ifdef USE_DEBUG
+        Serial.println("---> Mode: Game <---");
+      #endif
+        //Determine Current lock position
+        LockMain_active = GetMotor1Pos(LockMain_active);
+        ledmatrix.showNum(LockMain_active);
+        //determine the color for the current lock
+        IsLocked(LockMain_active);
+        //set all leds to their color map 
+        SetAllLedColor();
+      break;
+    case 3:
+      #ifdef USE_DEBUG
+        Serial.println("---> Mode: Outro <---");
+      #endif
       break;
   }
   delay(200);
